@@ -29,5 +29,5 @@ x_test = (x_test.astype("float32")/255).reshape(-1,input_size)
 
 dna = np.random.randn(input_size*hidden_size+hidden_size*output_size)
 
-optimizer = ES("acc", predict, 50, 0.1, 0.05, 10)
-optimizer.fit(dna, x_train[:2000], y_train[:2000])
+optimizer = ES("acc", predict)
+optimizer.fit(dna, x_train[:2000], y_train[:2000], batch_size=128, shuffle=True)
