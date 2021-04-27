@@ -3,18 +3,18 @@ import multiprocessing as mp
 from inspect import isfunction
 class ES:
     # ES takes following arguments:
-    # - loss:       one of ["mse","acc",custom_function]
-    #               the custom function has to take predictions and 
-    #               target and must return some kind of number as a score
-    # - predict:    a custom function that takes dna and input data and
-    #               returns a prediction
-    def __init__(self, loss, predict, input_size, hidden_size, output_size):
-        self.loss       = loss
-        self.predict    = predict
-        self.input_size = input_size
-        self.hidden_size= hidden_size
-        self.output_size = output_size
+    # - loss:        one of ["mse","acc",custom_function]
+    #                the custom function has to take predictions and 
+    #                target and must return some kind of number as a score
+    # - predict:     a custom function that takes dna and input data and
+    #                returns a prediction
+    #- predict_args: list of extra arguments that the predict function can take
 
+    def __init__(self, loss, predict, predict_args = []):
+        self.loss         = loss
+        self.predict      = predict
+        self.predict_args = predict_args
+    
     def mse(self, y_true, y_pred):
         return -np.mean((y_true - y_pred)**2)
 
@@ -31,18 +31,17 @@ class ES:
         else:
             raise ValueError('Unknown loss')
 
-    def f(self, q_d, q_fit, npop, dna, sigma, lr, x_batch, y_batch):
+    def get_fit(self, q, npop, dna, sigma, lr, x_batch, y_batch):
         noise = np.random.randn(npop, len(dna))
         fitness = np.zeros(npop)
         for p in range(npop):
             predictions = []
             model = dna + sigma * noise[p]
             for x in x_batch:
-                predictions.append(self.predict(model, x, self.input_size, self.hidden_size, self.output_size))
+                predictions.append(self.predict(model, x, self.predict_args))
             fitness[p] = self.score(y_batch, predictions)
         d = (fitness - np.mean(fitness)) / np.std(fitness)
-        q_d.put(lr / (npop * sigma) * np.dot(noise.T, d))
-        q_fit.put(np.amax(fitness))
+        q.put(((lr / (npop * sigma) * np.dot(noise.T, d)), np.amax(fitness)))
 
 
     # - npop:       population size
@@ -61,22 +60,21 @@ class ES:
                 indices = np.random.permutation(len(x_train))
             else:
                 indices = range(data_len)
-            args = []
             for b in range(data_len//batch_size):
                 x_batch = x_train[indices[b*batch_size:(b+1)*batch_size]]
                 y_batch = y_train[indices[b*batch_size:(b+1)*batch_size]]
-                q_d = mp.Queue()
-                q_fit = mp.Queue()
+                q = mp.Queue()
                 procs = []
                 for i in range(cores):
-                    proc = mp.Process(target=self.f, args=(q_d, q_fit, npop//cores, dna, sigma, lr, x_batch, y_batch))
+                    proc = mp.Process(target=self.get_fit, args=(q, npop//cores, dna, sigma, lr, x_batch, y_batch))
                     procs.append(proc)
                     proc.start()
-                fitness = 0
-                d = 0
+                fitness, d = 0, 0
                 for i in range(len(procs)):
-                    d += q_d.get()
-                    fitness = max(fitness, q_fit.get()) 
+                    content = q.get()
+                    d += content[0]
+                    fitness = max(fitness, content[1])
+
                 for p in procs:
                     p.join()
                 dna += d

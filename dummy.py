@@ -9,7 +9,8 @@ def softmax(x):
     r = np.exp(x - np.max(x))
     return r / r.sum()
 
-def predict(dna, x, input_size, hidden_size, output_size):
+def predict(dna, x, args):
+    input_size, hidden_size, output_size = args
     mat_1 = dna[:input_size*hidden_size].reshape(-1, input_size)
     mat_2 = dna[input_size*hidden_size:].reshape(10, -1)
     return np.argmax(softmax(np.dot(mat_2, relu(np.dot(mat_1, x)))))
@@ -25,11 +26,11 @@ if __name__ == '__main__':
 
     dna = np.random.randn(input_size*hidden_size+hidden_size*output_size)
 
-    optimizer = ES("acc", predict, input_size, hidden_size, output_size)
-    dna = optimizer.fit(dna, x_train, y_train, batch_size=10000, shuffle=True, epochs=5)
+    optimizer = ES("acc", predict, [input_size, hidden_size, output_size])
+    dna = optimizer.fit(dna, x_train[:5000], y_train[:5000], batch_size=2500,npop=100, shuffle=True, epochs=5)
 
     predictions = []
     for x in x_test:
-        predictions.append(predict(dna, x, input_size, hidden_size, output_size))
+        predictions.append(predict(dna, x, [input_size, hidden_size, output_size]))
     print("test accuracy: %f" % (np.mean(predictions == y_test)))
 
