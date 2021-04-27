@@ -27,10 +27,9 @@ if __name__ == '__main__':
     dna = np.random.randn(input_size*hidden_size+hidden_size*output_size)
 
     optimizer = ES("acc", predict, [input_size, hidden_size, output_size])
-    dna = optimizer.fit(dna, x_train[:5000], y_train[:5000], batch_size=2500,npop=100, shuffle=True, epochs=5)
+    dna = optimizer.fit(dna, x_train[:2000], y_train[:2000], batch_size=100, npop=100, shuffle=True, epochs=10)
 
     predictions = []
     for x in x_test:
         predictions.append(predict(dna, x, [input_size, hidden_size, output_size]))
     print("test accuracy: %f" % (np.mean(predictions == y_test)))
-

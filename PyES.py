@@ -1,5 +1,7 @@
 import numpy as np
 import multiprocessing as mp
+import os
+import sys
 from inspect import isfunction
 class ES:
     # ES takes following arguments:
@@ -40,7 +42,10 @@ class ES:
             for x in x_batch:
                 predictions.append(self.predict(model, x, self.predict_args))
             fitness[p] = self.score(y_batch, predictions)
-        d = (fitness - np.mean(fitness)) / np.std(fitness)
+            std = np.std(fitness)
+            if not std:
+                std = 10**-16
+        d = (fitness - np.mean(fitness)) / std
         q.put(((lr / (npop * sigma) * np.dot(noise.T, d)), np.amax(fitness)))
 
 
@@ -49,18 +54,21 @@ class ES:
     # - lr:         learning rate
     # - epochs:     no of epochs for training
     def fit(self, dna, x_train, y_train, batch_size=0, shuffle=False, lr=0.05, sigma=0.1, npop=50, epochs=10, verbosity=2):
+        rows, columns = os.popen('stty size', 'r').read().split()
         cores = mp.cpu_count()
         print("detected %d cores.." % (cores))
         data_len = len(x_train)
         if batch_size < 1:
             batch_size = data_len
-
+        batch_count   = data_len // batch_size
+        
         for e in range(epochs):
             if shuffle:
                 indices = np.random.permutation(len(x_train))
             else:
                 indices = range(data_len)
-            for b in range(data_len//batch_size):
+            
+            for b in range(batch_count):
                 x_batch = x_train[indices[b*batch_size:(b+1)*batch_size]]
                 y_batch = y_train[indices[b*batch_size:(b+1)*batch_size]]
                 q = mp.Queue()
@@ -79,9 +87,15 @@ class ES:
                     p.join()
                 dna += d
                 if verbosity == 2:
-                    print("epoch %d: batch %d: fitness = %f" % (e, b, np.amax(fitness)))
+                    if b == batch_count-1:
+                        prog = int(np.ceil(b/batch_count)*20)
+                    else: 
+                        prog = (b*20//batch_count)
+                    sys.stdout.write("[%s] epoch %d: batch %d: fitness = %f\n\33[A" % (prog*'#' + (20-prog)*' ', e, b, np.amax(fitness)))
             if verbosity == 1:
                 print("epoch %d: fitness = %f" % (e, np.amax(fitness)))
+            elif verbosity == 2:
+                sys.stdout.write("\n")
         return dna
 
 
