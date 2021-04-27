@@ -43,7 +43,7 @@ class ES:
             else:
                 indices = range(data_len)
 
-            for b in range(max((data_len//batch_size) - 1,1)):
+            for b in range(data_len//batch_size):
                 x_batch = x_train[indices[b*batch_size:(b+1)*batch_size]]
                 y_batch = y_train[indices[b*batch_size:(b+1)*batch_size]]
                 fitness = np.zeros(npop)
