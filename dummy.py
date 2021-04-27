@@ -9,25 +9,28 @@ def softmax(x):
     r = np.exp(x - np.max(x))
     return r / r.sum()
 
-def predict(dna, x):
+def predict(dna, x, args):
+    input_size, hidden_size, output_size = args
     mat_1 = dna[:input_size*hidden_size].reshape(-1, input_size)
     mat_2 = dna[input_size*hidden_size:].reshape(10, -1)
     return np.argmax(softmax(np.dot(mat_2, relu(np.dot(mat_1, x)))))
 
-input_size = 784
-hidden_size = 32
-output_size = 10
+if __name__ == '__main__':
+    input_size = 784
+    hidden_size = 32
+    output_size = 10
 
-(x_train, y_train), (x_test, y_test) = mnist.load_data()
-x_train = (x_train.astype("float32")/255).reshape(-1, input_size)
-x_test = (x_test.astype("float32")/255).reshape(-1,input_size)
+    (x_train, y_train), (x_test, y_test) = mnist.load_data()
+    x_train = (x_train.astype("float32")/255).reshape(-1, input_size)
+    x_test = (x_test.astype("float32")/255).reshape(-1,input_size)
 
-dna = np.random.randn(input_size*hidden_size+hidden_size*output_size)
+    dna = np.random.randn(input_size*hidden_size+hidden_size*output_size)
 
-optimizer = ES("acc", predict)
-dna = optimizer.fit(dna, x_train[:2000], y_train[:2000], batch_size=128, shuffle=True, epochs=1)
+    optimizer = ES("acc", predict, [input_size, hidden_size, output_size])
+    dna = optimizer.fit(dna, x_train[:5000], y_train[:5000], batch_size=2500,npop=100, shuffle=True, epochs=5)
 
-predictions = []
-for x in x_test:
-    predictions.append(predict(dna, x))
-print("test accuracy: %f" % (np.mean(predictions == y_test)))
+    predictions = []
+    for x in x_test:
+        predictions.append(predict(dna, x, [input_size, hidden_size, output_size]))
+    print("test accuracy: %f" % (np.mean(predictions == y_test)))
+
