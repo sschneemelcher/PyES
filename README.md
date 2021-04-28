@@ -13,3 +13,4 @@ This Repository consists of the actual algorithm and a dummy script as an exampl
 TODO:
 * Implement a baseline script with gradient descent and make a comparison
 * Performance improvements
+* Support for distributed training
