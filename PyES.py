@@ -2,6 +2,9 @@ import numpy as np
 import multiprocessing as mp
 import os
 import sys
+import socket
+import threading
+import struct
 from inspect import isfunction
 class ES:
     # ES takes following arguments:
@@ -12,10 +15,12 @@ class ES:
     #                returns a prediction
     #- predict_args: list of extra arguments that the predict function can take
 
-    def __init__(self, loss, predict, predict_args = []):
+    def __init__(self, loss, predict, predict_args = [], peers = []):
         self.loss         = loss
         self.predict      = predict
         self.predict_args = predict_args
+        self.distributed  = len(peers) > 0
+        self.peers        = peers
     
     def mse(self, y_true, y_pred):
         return -np.mean((y_true - y_pred)**2)
@@ -48,12 +53,37 @@ class ES:
         d = (fitness - np.mean(fitness)) / std
         q.put(((lr / (npop * sigma) * np.dot(noise.T, d)), np.amax(fitness)))
 
+    def handle_client_connection(self, client_socket, address):
+        self.dna = list(np.array(self.dna) + np.array(struct.unpack('=%sf' % (len(self.dna)), client_socket.recv(8*1024*1300))))
+        print("\ngot update from {}:{}".format(address[0], address[1]))
+        client_socket.close()
+
+    def listen(self):
+        bind_port = 9999
+        bind_ip = '0.0.0.0'
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server.bind((bind_ip, bind_port))
+        server.listen(len(self.peers))
+        print("listening on port %d..." %(bind_port))
+        while True:
+            client_sock, address = server.accept()
+            print('Accepted connection from {}:{}'.format(address[0], address[1]))
+            client_handler = threading.Thread(
+                target=self.handle_client_connection,
+                args=(client_sock, address,)
+            )
+            client_handler.start()
+
 
     # - npop:       population size
     # - sigma:      randomness factor for the mutations
     # - lr:         learning rate
     # - epochs:     no of epochs for training
     def fit(self, dna, x_train, y_train, batch_size=0, shuffle=False, lr=0.05, sigma=0.1, npop=50, epochs=10, verbosity=2):
+        self.dna = list(dna)
+        if self.distributed:
+            server = threading.Thread(target=self.listen)
+            server.start()
         rows, columns = os.popen('stty size', 'r').read().split()
         cores = mp.cpu_count()
         print("detected %d cores.." % (cores))
@@ -85,7 +115,18 @@ class ES:
 
                 for p in procs:
                     p.join()
-                dna += d
+                print(d.shape)
+                print(dna.shape)
+                dna = np.array(self.dna) + d
+                self.dna = list(dna)
+                client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                for peer in self.peers:
+                    try:
+                        client.connect((peer, 9998))
+                        client.send(struct.pack('=%sf' % (dna.shape[0]), *list(d)))
+                        client.close()
+                    except ConnectionRefusedError:
+                        print("\npeer %s seems to be down" % (peer))
                 if verbosity == 2:
                     if b == batch_count-1:
                         prog = int(np.ceil(b/batch_count)*20)
