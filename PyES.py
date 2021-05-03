@@ -113,19 +113,21 @@ class ES:
                 dna_str = str(list(dna))[1:-1]
                 ##### check if your dna is still the newest
                 while dna_hash != r.get('hash'):
+                    print("hash mismatch")
                     dna_hash = r.get('hash')
                     dna = np.array(r.get('dna').split(b','), dtype=np.float32) + d
                     dna_str = str(list(dna))[1:-1]
+                print("shared new dna")
                 r.set('hash', hash(dna_str))
                 r.set('dna', dna_str)
-
+                dna_hash = r.get('hash')
 
                 if verbosity == 2:
                     if b == batch_count-1:
                         prog = int(np.ceil(b/batch_count)*20)
                     else: 
                         prog = (b*20//batch_count)
-                    sys.stdout.write("[%s] epoch %d: batch %d: fitness = %f\n\33[A" % (prog*'#' + (20-prog)*' ', e, b, np.amax(fitness)))
+                    sys.stdout.write("[%s] epoch %d: batch %d: fitness = %f\n" % (prog*'#' + (20-prog)*' ', e, b, np.amax(fitness)))
             if verbosity == 1:
                 print("epoch %d: fitness = %f" % (e, np.amax(fitness)))
             elif verbosity == 2:

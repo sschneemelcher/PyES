@@ -26,8 +26,8 @@ if __name__ == '__main__':
 
     dna = np.random.randn(input_size*hidden_size+hidden_size*output_size)
 
-    optimizer = ES("acc", predict, [input_size, hidden_size, output_size], server="localhost:6379")
-    dna = optimizer.fit(dna, x_train, y_train, batch_size=500, npop=500, shuffle=True, epochs=10)
+    optimizer = ES("acc", predict, [input_size, hidden_size, output_size], server="192.168.188.47:6379")
+    dna = optimizer.fit(dna, x_train, y_train, batch_size=2000, npop=100, shuffle=True, epochs=10)
 
     predictions = []
     for x in x_test:
