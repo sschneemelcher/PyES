@@ -1,7 +1,9 @@
 import numpy as np
 import multiprocessing as mp
+import redis
 import os
 import sys
+import struct
 from inspect import isfunction
 class ES:
     # ES takes following arguments:
@@ -12,10 +14,12 @@ class ES:
     #                returns a prediction
     #- predict_args: list of extra arguments that the predict function can take
 
-    def __init__(self, loss, predict, predict_args = []):
+    def __init__(self, loss, predict, predict_args = [], server = ""):
         self.loss         = loss
         self.predict      = predict
         self.predict_args = predict_args
+        self.distributed  = server != ""
+        self.server       = server
     
     def mse(self, y_true, y_pred):
         return -np.mean((y_true - y_pred)**2)
@@ -48,19 +52,32 @@ class ES:
         d = (fitness - np.mean(fitness)) / std
         q.put(((lr / (npop * sigma) * np.dot(noise.T, d)), np.amax(fitness)))
 
-
     # - npop:       population size
     # - sigma:      randomness factor for the mutations
     # - lr:         learning rate
     # - epochs:     no of epochs for training
     def fit(self, dna, x_train, y_train, batch_size=0, shuffle=False, lr=0.05, sigma=0.1, npop=50, epochs=10, verbosity=2):
-        rows, columns = os.popen('stty size', 'r').read().split()
+
+        if self.distributed:
+            r = redis.Redis(host=self.server.split(":")[0], port=self.server.split(":")[1], db=0)
+            dna_str = str(list(dna))[1:-1]
+            dna_hash = r.get('hash')
+            if dna_hash is None: # synchronize the dna with the redis server
+                r.set('hash', hash(dna_str))
+                r.set('dna', dna_str)
+            else:
+                dna_hash = r.get('hash')
+                dna_server = r.get('dna')  
+                while dna_server is None: # be sure that there is dna on the server
+                    dna_server = r.get('dna')
+                dna = np.array(dna_server.split(b','), dtype=np.float32)
+
         cores = mp.cpu_count()
         print("detected %d cores.." % (cores))
         data_len = len(x_train)
         if batch_size < 1:
             batch_size = data_len
-        batch_count   = data_len // batch_size
+        batch_count    = data_len // batch_size
         
         for e in range(epochs):
             if shuffle:
@@ -72,26 +89,45 @@ class ES:
                 x_batch = x_train[indices[b*batch_size:(b+1)*batch_size]]
                 y_batch = y_train[indices[b*batch_size:(b+1)*batch_size]]
                 q = mp.Queue()
+
                 procs = []
-                for i in range(cores):
+                for i in range(cores): # give every process only a share of the whole population
                     proc = mp.Process(target=self.get_fit, args=(q, npop//cores, dna, sigma, lr, x_batch, y_batch))
                     procs.append(proc)
                     proc.start()
-                fitness, d = 0, 0
-                for i in range(len(procs)):
+
+                content = q.get()
+                d = content[0]
+                fitness = content[1]
+                for i in range(len(procs) - 1):
                     content = q.get()
                     d += content[0]
                     fitness = max(fitness, content[1])
 
-                for p in procs:
+                for p in procs: 
                     p.join()
-                dna += d
+
+
+
+                dna += d 
+                dna_str = str(list(dna))[1:-1]
+                ##### check if your dna is still the newest
+                while dna_hash != r.get('hash'):
+                    print("hash mismatch")
+                    dna_hash = r.get('hash')
+                    dna = np.array(r.get('dna').split(b','), dtype=np.float32) + d
+                    dna_str = str(list(dna))[1:-1]
+                print("shared new dna")
+                r.set('hash', hash(dna_str))
+                r.set('dna', dna_str)
+                dna_hash = r.get('hash')
+
                 if verbosity == 2:
                     if b == batch_count-1:
                         prog = int(np.ceil(b/batch_count)*20)
                     else: 
                         prog = (b*20//batch_count)
-                    sys.stdout.write("[%s] epoch %d: batch %d: fitness = %f\n\33[A" % (prog*'#' + (20-prog)*' ', e, b, np.amax(fitness)))
+                    sys.stdout.write("[%s] epoch %d: batch %d: fitness = %f\n" % (prog*'#' + (20-prog)*' ', e, b, np.amax(fitness)))
             if verbosity == 1:
                 print("epoch %d: fitness = %f" % (e, np.amax(fitness)))
             elif verbosity == 2:
