@@ -1,9 +1,8 @@
 import numpy as np
 import multiprocessing as mp
+import redis
 import os
 import sys
-import socket
-import threading
 import struct
 from inspect import isfunction
 class ES:
@@ -15,12 +14,12 @@ class ES:
     #                returns a prediction
     #- predict_args: list of extra arguments that the predict function can take
 
-    def __init__(self, loss, predict, predict_args = [], peers = []):
+    def __init__(self, loss, predict, predict_args = [], server = ""):
         self.loss         = loss
         self.predict      = predict
         self.predict_args = predict_args
-        self.distributed  = len(peers) > 0
-        self.peers        = peers
+        self.distributed  = server != ""
+        self.server       = server
     
     def mse(self, y_true, y_pred):
         return -np.mean((y_true - y_pred)**2)
@@ -53,44 +52,32 @@ class ES:
         d = (fitness - np.mean(fitness)) / std
         q.put(((lr / (npop * sigma) * np.dot(noise.T, d)), np.amax(fitness)))
 
-    def handle_client_connection(self, client_socket, address):
-        self.dna = list(np.array(self.dna) + np.array(struct.unpack('=%sf' % (len(self.dna)), client_socket.recv(8*1024*1300))))
-        print("\ngot update from {}:{}".format(address[0], address[1]))
-        client_socket.close()
-
-    def listen(self):
-        bind_port = 9999
-        bind_ip = '0.0.0.0'
-        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server.bind((bind_ip, bind_port))
-        server.listen(len(self.peers))
-        print("listening on port %d..." %(bind_port))
-        while True:
-            client_sock, address = server.accept()
-            print('Accepted connection from {}:{}'.format(address[0], address[1]))
-            client_handler = threading.Thread(
-                target=self.handle_client_connection,
-                args=(client_sock, address,)
-            )
-            client_handler.start()
-
-
     # - npop:       population size
     # - sigma:      randomness factor for the mutations
     # - lr:         learning rate
     # - epochs:     no of epochs for training
     def fit(self, dna, x_train, y_train, batch_size=0, shuffle=False, lr=0.05, sigma=0.1, npop=50, epochs=10, verbosity=2):
-        self.dna = list(dna)
+
         if self.distributed:
-            server = threading.Thread(target=self.listen)
-            server.start()
-        rows, columns = os.popen('stty size', 'r').read().split()
+            r = redis.Redis(host=self.server.split(":")[0], port=self.server.split(":")[1], db=0)
+            dna_str = str(list(dna))[1:-1]
+            dna_hash = r.get('hash')
+            if dna_hash is None: # synchronize the dna with the redis server
+                r.set('hash', hash(dna_str))
+                r.set('dna', dna_str)
+            else:
+                dna_hash = r.get('hash')
+                dna_server = r.get('dna')  
+                while dna_server is None: # be sure that there is dna on the server
+                    dna_server = r.get('dna')
+                dna = np.array(dna_server.split(b','), dtype=np.float32)
+
         cores = mp.cpu_count()
         print("detected %d cores.." % (cores))
         data_len = len(x_train)
         if batch_size < 1:
             batch_size = data_len
-        batch_count   = data_len // batch_size
+        batch_count    = data_len // batch_size
         
         for e in range(epochs):
             if shuffle:
@@ -102,31 +89,37 @@ class ES:
                 x_batch = x_train[indices[b*batch_size:(b+1)*batch_size]]
                 y_batch = y_train[indices[b*batch_size:(b+1)*batch_size]]
                 q = mp.Queue()
+
                 procs = []
-                for i in range(cores):
+                for i in range(cores): # give every process only a share of the whole population
                     proc = mp.Process(target=self.get_fit, args=(q, npop//cores, dna, sigma, lr, x_batch, y_batch))
                     procs.append(proc)
                     proc.start()
-                fitness, d = 0, 0
-                for i in range(len(procs)):
+
+                content = q.get()
+                d = content[0]
+                fitness = content[1]
+                for i in range(len(procs) - 1):
                     content = q.get()
                     d += content[0]
                     fitness = max(fitness, content[1])
 
-                for p in procs:
+                for p in procs: 
                     p.join()
-                print(d.shape)
-                print(dna.shape)
-                dna = np.array(self.dna) + d
-                self.dna = list(dna)
-                client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                for peer in self.peers:
-                    try:
-                        client.connect((peer, 9998))
-                        client.send(struct.pack('=%sf' % (dna.shape[0]), *list(d)))
-                        client.close()
-                    except ConnectionRefusedError:
-                        print("\npeer %s seems to be down" % (peer))
+
+
+
+                dna += d 
+                dna_str = str(list(dna))[1:-1]
+                ##### check if your dna is still the newest
+                while dna_hash != r.get('hash'):
+                    dna_hash = r.get('hash')
+                    dna = np.array(r.get('dna').split(b','), dtype=np.float32) + d
+                    dna_str = str(list(dna))[1:-1]
+                r.set('hash', hash(dna_str))
+                r.set('dna', dna_str)
+
+
                 if verbosity == 2:
                     if b == batch_count-1:
                         prog = int(np.ceil(b/batch_count)*20)

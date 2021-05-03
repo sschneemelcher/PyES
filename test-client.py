@@ -1,20 +1,13 @@
-import socket
-import struct
+import redis
 import numpy as np
 
-hostname, sld, tld, port = 'www', 'integralist', 'co.uk', 80
-target = '{}.{}.{}'.format(hostname, sld, tld)
-d = np.array([0.1, 0.1, 0.1])
-# create an ipv4 (AF_INET) socket object using the tcp protocol (SOCK_STREAM)
-client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+r = redis.Redis(host='localhost', port=6379, db=0)
 
-# connect the client
-# client.connect((target, port))
-client.connect(('0.0.0.0', 9999))
+dna = np.random.rand(784*64+64*10)
+dna_str = str(list(dna))[1:-1]
 
-# send some data (in this case a HTTP GET request)
-client.send(struct.pack('%sf' % (3), *list(d)))
+r.set('hash', hash(dna_str))
+r.set('dna', dna_str)
 
-# receive the response data (4096 is recommended buffer size)
-
-print(struct.unpack('%sf' % (3), client.recv(1024*300)))
+dna2 = np.array(r.get('dna').split(b','), dtype=np.float32)
+print(dna2)
