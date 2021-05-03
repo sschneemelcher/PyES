@@ -10,6 +10,8 @@ If you are not convinced yet how cool this is, read [this](https://openai.com/bl
 
 This Repository consists of the actual algorithm and a dummy script as an example of how to use it. In this example, a neural network is trained on the MNIST dataset, using accuracy (which is not differentiable) as the fitness function!
 
+There is support for distributed training by running a small redis server from [this](https://tokio.rs/tokio/tutorial/hello-tokio) which is in this repo, or running an actual redis server. The workers save their dna their and try to avoid race conditions by saving a hash too, but this is rather crude and still work in progress, PR's are welcome.
+
 TODO:
 * Implement a baseline script with gradient descent and make a comparison
 * Performance improvements
