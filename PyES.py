@@ -79,9 +79,10 @@ class ES:
             batch_size = data_len
         batch_count    = data_len // batch_size
         
+
         for e in range(epochs):
             if shuffle:
-                indices = np.random.permutation(len(x_train))
+                indices = np.random.permutation(data_len)
             else:
                 indices = range(data_len)
             
