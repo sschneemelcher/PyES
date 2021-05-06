@@ -110,17 +110,18 @@ class ES:
 
 
                 dna += d 
-                dna_str = str(list(dna))[1:-1]
-                ##### check if your dna is still the newest
-                while dna_hash != r.get('hash'):
-                    print("hash mismatch")
-                    dna_hash = r.get('hash')
-                    dna = np.array(r.get('dna').split(b','), dtype=np.float32) + d
+                if self.distributed:
                     dna_str = str(list(dna))[1:-1]
-                print("shared new dna")
-                r.set('hash', hash(dna_str))
-                r.set('dna', dna_str)
-                dna_hash = r.get('hash')
+                    ##### check if your dna is still the newest
+                    while dna_hash != r.get('hash'):
+                        print("hash mismatch")
+                        dna_hash = r.get('hash')
+                        dna = np.array(r.get('dna').split(b','), dtype=np.float32) + d
+                        dna_str = str(list(dna))[1:-1]
+                    print("shared new dna")
+                    r.set('hash', hash(dna_str))
+                    r.set('dna', dna_str)
+                    dna_hash = r.get('hash')
 
                 if verbosity == 2:
                     if b == batch_count-1:
