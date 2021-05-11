@@ -11,9 +11,9 @@ def softmax(x):
 
 def predict(dna, x, args):
     x = relu(np.dot(dna[:args[0]*args[1]].reshape(-1, args[0]), x))
-    for i in range(1, len(args) - 1):
+    for i in range(1, len(args) - 2):
         x = relu(np.dot(dna[args[i-1] * args[i]:args[i-1] * args[i] + args[i] * args[i+1]].reshape(-1, args[i]), x))
-    return np.argmax(softmax(np.dot(x, dna[-(args[-2] * args[-1]):].reshape(args[-1], -1))))
+    return np.argmax(softmax(np.dot( dna[-(args[-2] * args[-1]):].reshape(args[-1], -1), x)))
 
 if __name__ == '__main__':
     layers = [784, 64, 32, 10]
