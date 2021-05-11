@@ -46,12 +46,9 @@ class ES:
             for x in x_batch:
                 predictions.append(self.predict(model, x, self.predict_args))
             fitness[p] = self.score(y_batch, predictions)
-            std = np.std(fitness)
-            if not std:
-                std = 10**-16
-        d = (fitness - np.mean(fitness)) / std
-        q.put(((lr / (npop * sigma) * np.dot(noise.T, d)), np.amax(fitness)))
+        q.put([fitness, noise])
 
+    
     # - npop:       population size
     # - sigma:      randomness factor for the mutations
     # - lr:         learning rate
@@ -97,20 +94,21 @@ class ES:
                     procs.append(proc)
                     proc.start()
 
-                content = q.get()
-                d = content[0]
-                fitness = content[1]
+                fitness, noise = q.get()
                 for i in range(len(procs) - 1):
                     content = q.get()
-                    d += content[0]
-                    fitness = max(fitness, content[1])
+                    fitness = np.append(fitness, content[0])
+                    noise   = np.append(noise, content[1], axis=0)
+
+                std = np.std(fitness)
+                if std == 0:
+                    std = 10**-16
+                d = (fitness - np.mean(fitness)) / std
+                dna += (lr / (npop * sigma) * np.dot(noise.T, d))
 
                 for p in procs: 
                     p.join()
 
-
-
-                dna += d 
                 if self.distributed:
                     dna_str = str(list(dna))[1:-1]
                     ##### check if your dna is still the newest
@@ -121,7 +119,6 @@ class ES:
                         dna_str = str(list(dna))[1:-1]
                     print("shared new dna")
                     r.set('hash', hash(dna_str))
-                    r.set('dna', dna_str)
                     dna_hash = r.get('hash')
 
                 if verbosity == 2:
