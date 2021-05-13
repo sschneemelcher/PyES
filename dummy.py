@@ -10,10 +10,18 @@ def softmax(x):
     return r / r.sum()
 
 def predict(dna, x, args):
-    x = relu(np.dot(dna[:args[0]*args[1]].reshape(-1, args[0]), x))
-    for i in range(1, len(args) - 2):
-        x = relu(np.dot(dna[args[i-1] * args[i]:args[i-1] * args[i] + args[i] * args[i+1]].reshape(-1, args[i]), x))
-    return np.argmax(softmax(np.dot( dna[-(args[-2] * args[-1]):].reshape(args[-1], -1), x)))
+    pos = 0 
+    posb = len(dna)
+    for i in range(0, len(args) - 1):
+        pos2 = pos + args[i] * args[i+1]
+        x = dna[posb-args[i+1]:posb] + np.dot(dna[pos:pos2].reshape(-1, args[i]), x)
+        if i != len(args)-1:
+            x = relu(x)
+        else:
+            x = softmax(x)
+        pos = pos2
+        posb -= args[i+1]
+    return np.argmax(x)
 
 if __name__ == '__main__':
     layers = [784, 64, 32, 10]
@@ -24,12 +32,12 @@ if __name__ == '__main__':
     
     size = 0
     for i in range(len(layers) - 1):
-        size += layers[i]*layers[i+1]
+        size += layers[i]*layers[i+1] + layers[i+1]
 
     dna = np.random.randn(size)
 
     optimizer = ES("acc", predict, layers)
-    dna = optimizer.fit(dna, x_train, y_train, batch_size=2000, npop=100, shuffle=True, epochs=10)
+    dna = optimizer.fit(dna, x_train, y_train, batch_size=500, npop=100, lr=0.1, sigma=0.1, shuffle=True, epochs=10)
 
     predictions = []
     for x in x_test:
